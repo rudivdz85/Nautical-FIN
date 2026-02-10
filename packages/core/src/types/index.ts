@@ -23,6 +23,21 @@ export type {
 } from './categories'
 
 export type {
+  Transaction,
+  NewTransaction,
+  TransactionType,
+  TransactionSource,
+  TransactionFilters,
+} from './transactions'
+
+export type {
+  RecurringTransaction,
+  NewRecurringTransaction,
+  RecurringFrequency,
+  RecurringAmountType,
+} from './recurring-transactions'
+
+export type {
   ApiSuccessResponse,
   ApiErrorResponse,
   ApiResponse,

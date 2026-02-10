@@ -14,3 +14,15 @@ export {
   createTestCategoryInput,
   resetCategoryFactoryCounters,
 } from './categories.factory'
+
+export {
+  createTestTransaction,
+  createTestTransactionInput,
+  resetTransactionFactoryCounters,
+} from './transactions.factory'
+
+export {
+  createTestRecurringTransaction,
+  createTestRecurringTransactionInput,
+  resetRecurringTransactionFactoryCounters,
+} from './recurring-transactions.factory'

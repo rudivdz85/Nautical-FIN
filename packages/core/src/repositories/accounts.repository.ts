@@ -1,4 +1,4 @@
-import { eq, and } from 'drizzle-orm'
+import { eq, and, sql } from 'drizzle-orm'
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 import { accounts } from '../db/schema'
 import type { Account, NewAccount } from '../types/accounts'
@@ -62,5 +62,23 @@ export const accountsRepository = {
       .where(and(eq(accounts.userId, userId), eq(accounts.isActive, true)))
 
     return results.length
+  },
+
+  async adjustBalance(
+    db: Database,
+    id: string,
+    userId: string,
+    delta: string,
+  ): Promise<Account | undefined> {
+    const results = await db
+      .update(accounts)
+      .set({
+        currentBalance: sql`${accounts.currentBalance}::numeric + ${delta}::numeric`,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(accounts.id, id), eq(accounts.userId, userId)))
+      .returning()
+
+    return results[0]
   },
 }

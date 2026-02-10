@@ -18,3 +18,19 @@ export {
   type CreateCategoryInput,
   type UpdateCategoryInput,
 } from './categories'
+
+export {
+  createTransactionSchema,
+  createTransferSchema,
+  updateTransactionSchema,
+  type CreateTransactionInput,
+  type CreateTransferInput,
+  type UpdateTransactionInput,
+} from './transactions'
+
+export {
+  createRecurringTransactionSchema,
+  updateRecurringTransactionSchema,
+  type CreateRecurringTransactionInput,
+  type UpdateRecurringTransactionInput,
+} from './recurring-transactions'
