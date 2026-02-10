@@ -1,0 +1,27 @@
+{
+  "name": "fin",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "test": "vitest run",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,mts,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,mts,json,md}\"",
+    "db:generate": "turbo db:generate",
+    "db:migrate": "turbo db:migrate",
+    "db:push": "turbo db:push",
+    "db:studio": "pnpm --filter @fin/web drizzle-kit studio",
+    "clean": "turbo clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.55.0",
+    "vitest": "^2.1.8"
+  }
+}
