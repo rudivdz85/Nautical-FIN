@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install:*)",
+      "Bash(npx vitest:*)",
+      "Bash(pnpm test:*)",
+      "Bash(pnpm build:*)",
+      "Bash(while read f)",
+      "Bash(do sed -i '' \"s/from ''\\\\\\(.*\\\\\\)\\\\.js''/from ''\\\\1''/g\" \"$f\")",
+      "Bash(done)",
+      "Bash(pnpm add:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nInitial scaffolding: pnpm monorepo with Next.js API and core packages\n\nSets up the Fin personal finance app foundation with:\n- Root: pnpm workspaces, Turbo, TypeScript strict, ESLint, Prettier, Vitest\n- packages/core: Drizzle ORM schema \\(full DB\\), types, Zod validation,\n  error classes, accounts repository and service layers\n- packages/logger: Pino-based wide event logging\n- packages/testing: Test factories for accounts\n- apps/web: Next.js 15 with Clerk auth, Neon Postgres, API routes\n- Accounts CRUD vertical slice \\(GET/POST /api/accounts\\)\n- 15 passing unit tests for accounts service\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(pnpm db:push:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_YrRVISbt4y0v@ep-wandering-forest-agbvbvgz-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require\" npx drizzle-kit:*)",
+      "Bash(node -e:*)",
+      "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_YrRVISbt4y0v@ep-wandering-forest-agbvbvgz-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require\" pnpm db:push:*)",
+      "Bash(pnpm --filter @fin/web add svix)"
+    ]
+  }
+}
