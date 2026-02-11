@@ -38,3 +38,9 @@ export {
   createTestPlannedOneOffInput,
   resetBudgetFactoryCounters,
 } from './budgets.factory'
+
+export {
+  createTestStatementImport,
+  createTestStatementImportInput,
+  resetStatementImportFactoryCounters,
+} from './statement-imports.factory'

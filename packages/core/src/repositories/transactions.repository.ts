@@ -109,6 +109,24 @@ export const transactionsRepository = {
     return results.length > 0
   },
 
+  async findByDateAndAmount(
+    db: Database,
+    accountId: string,
+    transactionDate: string,
+    amount: string,
+  ): Promise<Transaction[]> {
+    return db
+      .select()
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.accountId, accountId),
+          eq(transactions.transactionDate, transactionDate),
+          eq(transactions.amount, amount),
+        ),
+      )
+  },
+
   async deleteByTransferPairId(db: Database, transferPairId: string): Promise<number> {
     const results = await db
       .delete(transactions)

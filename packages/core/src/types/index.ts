@@ -52,6 +52,14 @@ export type {
 } from './budgets'
 
 export type {
+  StatementImport,
+  NewStatementImport,
+  ImportStatus,
+  ParsedTransaction,
+  ImportResult,
+} from './statement-imports'
+
+export type {
   ApiSuccessResponse,
   ApiErrorResponse,
   ApiResponse,
