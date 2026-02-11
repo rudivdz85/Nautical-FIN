@@ -38,6 +38,20 @@ export type {
 } from './recurring-transactions'
 
 export type {
+  Budget,
+  NewBudget,
+  BudgetStatus,
+  BudgetItem,
+  NewBudgetItem,
+  SurplusAction,
+  BudgetIncome,
+  NewBudgetIncome,
+  PlannedOneOff,
+  NewPlannedOneOff,
+  BudgetWithDetails,
+} from './budgets'
+
+export type {
   ApiSuccessResponse,
   ApiErrorResponse,
   ApiResponse,
