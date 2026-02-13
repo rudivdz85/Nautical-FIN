@@ -16,7 +16,9 @@
       "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_YrRVISbt4y0v@ep-wandering-forest-agbvbvgz-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require\" npx drizzle-kit:*)",
       "Bash(node -e:*)",
       "Bash(DATABASE_URL=\"postgresql://neondb_owner:npg_YrRVISbt4y0v@ep-wandering-forest-agbvbvgz-pooler.c-2.eu-central-1.aws.neon.tech/neondb?sslmode=require\" pnpm db:push:*)",
-      "Bash(pnpm --filter @fin/web add svix)"
+      "Bash(pnpm --filter @fin/web add svix)",
+      "Bash(ls:*)",
+      "Bash(pnpm remove:*)"
     ]
   }
 }
