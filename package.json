@@ -15,6 +15,11 @@
     "db:studio": "pnpm --filter @fin/web drizzle-kit studio",
     "clean": "turbo clean && rm -rf node_modules"
   },
+  "pnpm": {
+    "overrides": {
+      "drizzle-orm": "0.38.4"
+    }
+  },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "eslint": "^9.18.0",
