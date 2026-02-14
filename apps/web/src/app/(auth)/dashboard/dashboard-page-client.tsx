@@ -2,8 +2,24 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { Budget, Transaction, SavingsGoal, Task, AiInsight } from '@fin/core'
-import { useState, useEffect, useRef } from 'react'
+import type { Budget, Transaction, SavingsGoal, Task, AiInsight, NetWorthSnapshot, Category, Actual } from '@fin/core'
+import { useState, useEffect, useRef, useMemo } from 'react'
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  Tooltip,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  CartesianGrid,
+  Legend,
+} from 'recharts'
+import { ChartTooltipContent, ChartEmptyState } from '@/components/ui/chart'
 import {
   Wallet,
   TrendingUp,
@@ -30,8 +46,11 @@ import {
   formatDate,
   formatTransactionType,
   formatMonth,
+  formatShortDate,
   formatBudgetStatus,
 } from '@/lib/format'
+
+const PIE_COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
 interface DashboardPageClientProps {
   netWorth: number
@@ -43,6 +62,9 @@ interface DashboardPageClientProps {
   savingsGoals: SavingsGoal[]
   pendingTasks: Task[]
   unreadInsights: AiInsight[]
+  netWorthSnapshots: NetWorthSnapshot[]
+  categories: Category[]
+  monthlyActuals: Actual[]
 }
 
 export function DashboardPageClient({
@@ -55,6 +77,9 @@ export function DashboardPageClient({
   savingsGoals,
   pendingTasks,
   unreadInsights = [],
+  netWorthSnapshots = [],
+  categories = [],
+  monthlyActuals = [],
 }: DashboardPageClientProps) {
   const router = useRouter()
   const [snapshotting, setSnapshotting] = useState(false)
@@ -74,6 +99,43 @@ export function DashboardPageClient({
       // silent — auto-generation is best-effort
     })
   }, [router])
+
+  const netWorthData = useMemo(() => {
+    return [...netWorthSnapshots]
+      .sort((a, b) => a.snapshotDate.localeCompare(b.snapshotDate))
+      .map((s) => ({
+        date: s.snapshotDate,
+        netWorth: parseFloat(s.netWorth),
+        assets: parseFloat(s.totalAssets),
+        liabilities: parseFloat(s.totalLiabilities),
+      }))
+  }, [netWorthSnapshots])
+
+  const spendingByCategory = useMemo(() => {
+    const catMap = new Map<string, { name: string; total: number }>()
+    for (const t of recentTransactions) {
+      if (t.transactionType !== 'debit') continue
+      const catId = t.categoryId ?? 'uncategorized'
+      const cat = categories.find((c) => c.id === catId)
+      const name = cat?.name ?? 'Uncategorized'
+      const entry = catMap.get(catId) ?? { name, total: 0 }
+      entry.total += parseFloat(t.amount)
+      catMap.set(catId, entry)
+    }
+    return Array.from(catMap.values())
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8)
+  }, [recentTransactions, categories])
+
+  const incomeVsExpenses = useMemo(() => {
+    return [...monthlyActuals]
+      .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+      .map((a) => ({
+        month: formatMonth(a.year, a.month).slice(0, 3) + ' ' + a.year,
+        income: parseFloat(a.totalIncome ?? '0'),
+        expenses: parseFloat(a.totalExpenses ?? '0'),
+      }))
+  }, [monthlyActuals])
 
   async function handleTakeSnapshot() {
     setSnapshotting(true)
@@ -247,7 +309,130 @@ export function DashboardPageClient({
         </Card>
       )}
 
-      {/* Row 2: Budget & Recent Transactions */}
+      {/* Row 2: Charts */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Net Worth Trend</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {netWorthData.length < 2 ? (
+              <div className="h-[220px]">
+                <ChartEmptyState message="Take snapshots to see your net worth trend." />
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={220}>
+                <AreaChart data={netWorthData}>
+                  <defs>
+                    <linearGradient id="netWorthGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                  <XAxis
+                    dataKey="date"
+                    tickFormatter={(v: string) => formatShortDate(v)}
+                    className="text-xs"
+                    tick={{ fontSize: 11 }}
+                  />
+                  <YAxis
+                    tickFormatter={(v: number) => formatCurrency(v).replace(/,\d{2}$/, '')}
+                    className="text-xs"
+                    tick={{ fontSize: 11 }}
+                    width={80}
+                  />
+                  <Tooltip content={<ChartTooltipContent labelFormatter={(l: string) => formatShortDate(l)} />} />
+                  <Area
+                    type="monotone"
+                    dataKey="netWorth"
+                    name="Net Worth"
+                    stroke="#10b981"
+                    fill="url(#netWorthGrad)"
+                    strokeWidth={2}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Spending by Category</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {spendingByCategory.length === 0 ? (
+              <div className="h-[220px]">
+                <ChartEmptyState message="No spending data yet." />
+              </div>
+            ) : (
+              <div className="flex items-center gap-4">
+                <ResponsiveContainer width="50%" height={220}>
+                  <PieChart>
+                    <Pie
+                      data={spendingByCategory}
+                      dataKey="total"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={50}
+                      outerRadius={80}
+                      paddingAngle={2}
+                    >
+                      {spendingByCategory.map((_, i) => (
+                        <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={<ChartTooltipContent />} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="flex-1 space-y-1.5">
+                  {spendingByCategory.map((entry, i) => (
+                    <div key={entry.name} className="flex items-center gap-2 text-xs">
+                      <span
+                        className="size-2.5 shrink-0 rounded-full"
+                        style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }}
+                      />
+                      <span className="truncate text-muted-foreground">{entry.name}</span>
+                      <span className="ml-auto font-numbers font-medium">
+                        {formatCurrency(entry.total)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {monthlyActuals.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Income vs Expenses</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={incomeVsExpenses}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                <YAxis
+                  tickFormatter={(v: number) => formatCurrency(v).replace(/,\d{2}$/, '')}
+                  tick={{ fontSize: 11 }}
+                  width={80}
+                />
+                <Tooltip content={<ChartTooltipContent />} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Row 3: Budget & Recent Transactions */}
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Budget Summary */}
         <Card>

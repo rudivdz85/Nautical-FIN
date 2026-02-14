@@ -17,6 +17,22 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+vi.mock('recharts', () => ({
+  ResponsiveContainer: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  AreaChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Area: () => null,
+  PieChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Pie: () => null,
+  Cell: () => null,
+  BarChart: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  Bar: () => null,
+  XAxis: () => null,
+  YAxis: () => null,
+  Tooltip: () => null,
+  CartesianGrid: () => null,
+  Legend: () => null,
+}))
+
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
     get: vi.fn().mockResolvedValue([]),
@@ -125,6 +141,9 @@ const defaultProps = {
   savingsGoals: [] as SavingsGoal[],
   pendingTasks: [] as Task[],
   unreadInsights: [],
+  netWorthSnapshots: [],
+  categories: [],
+  monthlyActuals: [],
 }
 
 describe('DashboardPageClient', () => {

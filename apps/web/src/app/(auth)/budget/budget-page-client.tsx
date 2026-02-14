@@ -4,6 +4,17 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Budget, Account, Category } from '@fin/core'
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+} from 'recharts'
+import { ChartTooltipContent } from '@/components/ui/chart'
+import {
   Plus,
   MoreHorizontal,
   Eye,
@@ -114,6 +125,39 @@ export function BudgetPageClient({ initialBudgets, accounts, categories }: Budge
               </CardContent>
             </Card>
           </div>
+
+          {initialBudgets.length >= 2 && (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="mb-4 text-sm font-medium">Budget Overview</p>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart
+                    data={initialBudgets
+                      .slice(0, 6)
+                      .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
+                      .map((b) => ({
+                        month: formatMonth(b.year, b.month).slice(0, 3) + ' ' + b.year,
+                        income: parseFloat(b.totalPlannedIncome ?? '0'),
+                        expenses: parseFloat(b.totalPlannedExpenses ?? '0'),
+                        unallocated: parseFloat(b.unallocatedAmount ?? '0'),
+                      }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                    <YAxis
+                      tickFormatter={(v: number) => formatCurrency(v).replace(/,\d{2}$/, '')}
+                      tick={{ fontSize: 11 }}
+                      width={80}
+                    />
+                    <Tooltip content={<ChartTooltipContent />} />
+                    <Legend wrapperStyle={{ fontSize: 12 }} />
+                    <Bar dataKey="income" name="Income" fill="#10b981" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="rounded-md border">
             <Table>

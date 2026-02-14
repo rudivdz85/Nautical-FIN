@@ -9,6 +9,8 @@ import {
   tasksService,
   transactionsService,
   aiInsightsService,
+  actualsService,
+  categoriesService,
 } from '@fin/core/services'
 import { DashboardPageClient } from './dashboard-page-client'
 
@@ -19,10 +21,11 @@ export default async function DashboardPage() {
   const thirtyDaysAgo = new Date(now)
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-  const [accounts, latestSnapshot, budgets, debts, savingsGoals, pendingTasks, recentTransactions, unreadInsights] =
+  const [accounts, latestSnapshot, allSnapshots, budgets, debts, savingsGoals, pendingTasks, recentTransactions, unreadInsights, actuals, categories] =
     await Promise.all([
       accountsService.list(db, user.id),
       netWorthSnapshotsService.getLatest(db, user.id),
+      netWorthSnapshotsService.list(db, user.id),
       budgetsService.list(db, user.id),
       debtsService.list(db, user.id),
       savingsGoalsService.list(db, user.id),
@@ -31,6 +34,8 @@ export default async function DashboardPage() {
         startDate: thirtyDaysAgo.toISOString().split('T')[0] ?? '',
       }),
       aiInsightsService.listUnread(db, user.id),
+      actualsService.list(db, user.id),
+      categoriesService.list(db, user.id),
     ])
 
   const spendingBalance = accounts
@@ -64,6 +69,9 @@ export default async function DashboardPage() {
       savingsGoals={savingsGoals}
       pendingTasks={pendingTasks}
       unreadInsights={unreadInsights}
+      netWorthSnapshots={allSnapshots}
+      categories={categories}
+      monthlyActuals={actuals.slice(0, 6)}
     />
   )
 }

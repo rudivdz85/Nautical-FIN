@@ -4,6 +4,16 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Debt, Account } from '@fin/core'
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from 'recharts'
+import { ChartTooltipContent } from '@/components/ui/chart'
+import {
   Plus,
   MoreHorizontal,
   Pencil,
@@ -121,6 +131,35 @@ export function DebtsPageClient({ initialDebts, accounts }: DebtsPageClientProps
               </CardContent>
             </Card>
           </div>
+
+          {initialDebts.length >= 2 && (
+            <Card>
+              <CardContent className="pt-6">
+                <p className="mb-4 text-sm font-medium">Debt Payoff Progress</p>
+                <ResponsiveContainer width="100%" height={Math.max(150, initialDebts.length * 50)}>
+                  <BarChart
+                    layout="vertical"
+                    data={initialDebts.map((d) => ({
+                      name: d.name.length > 18 ? d.name.slice(0, 18) + '...' : d.name,
+                      paid: Math.max(0, parseFloat(d.originalAmount) - parseFloat(d.currentBalance)),
+                      remaining: parseFloat(d.currentBalance),
+                    }))}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" className="stroke-muted" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      tickFormatter={(v: number) => formatCurrency(v).replace(/,\d{2}$/, '')}
+                      tick={{ fontSize: 11 }}
+                    />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={120} />
+                    <Tooltip content={<ChartTooltipContent />} />
+                    <Bar dataKey="paid" name="Paid" stackId="a" fill="#10b981" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="remaining" name="Remaining" stackId="a" fill="#ef4444" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          )}
 
           <div className="rounded-md border">
             <Table>
