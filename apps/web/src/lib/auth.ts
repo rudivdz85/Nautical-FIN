@@ -18,14 +18,22 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser> {
       id: users.id,
       clerkId: users.clerkId,
       email: users.email,
+      displayName: users.displayName,
+      onboardingCompleted: users.onboardingCompleted,
     })
     .from(users)
     .where(eq(users.clerkId, clerkId))
     .limit(1)
 
-  const user = results[0]
-  if (user) {
-    return user
+  const row = results[0]
+  if (row) {
+    return {
+      id: row.id,
+      clerkId: row.clerkId,
+      email: row.email,
+      displayName: row.displayName,
+      onboardingCompleted: row.onboardingCompleted ?? false,
+    }
   }
 
   // Auto-provision: user exists in Clerk but not in DB (e.g. webhook hasn't fired)
@@ -38,5 +46,11 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser> {
   const displayName = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') || undefined
   const newUser = await usersService.createFromWebhook(db, clerkId, email, displayName)
 
-  return { id: newUser.id, clerkId: newUser.clerkId, email: newUser.email }
+  return {
+    id: newUser.id,
+    clerkId: newUser.clerkId,
+    email: newUser.email,
+    displayName: newUser.displayName,
+    onboardingCompleted: newUser.onboardingCompleted ?? false,
+  }
 }

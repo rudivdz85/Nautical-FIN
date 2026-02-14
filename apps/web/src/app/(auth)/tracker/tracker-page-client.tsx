@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { DailyTrackerEntry } from '@fin/core'
-import { ChevronLeft, ChevronRight, CalendarCheck } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarCheck, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -50,6 +50,7 @@ export function TrackerPageClient() {
   })
   const [entries, setEntries] = useState<DailyTrackerEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isGenerating, setIsGenerating] = useState(false)
   const [dialog, setDialog] = useState<DialogState>({ type: 'closed' })
 
   const weekEnd = (() => {
@@ -90,6 +91,26 @@ export function TrackerPageClient() {
     setWeekStart(start)
   }
 
+  async function handleGenerate() {
+    setIsGenerating(true)
+    try {
+      await apiClient.post('/api/daily-tracker/generate', {
+        startDate: weekStart,
+        endDate: weekEnd,
+      })
+      toast.success('Tracker entries generated')
+      await fetchEntries()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message)
+      } else {
+        toast.error('Failed to generate tracker data')
+      }
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   function handleUpdate() {
     setDialog({ type: 'closed' })
     fetchEntries()
@@ -115,6 +136,15 @@ export function TrackerPageClient() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGenerate}
+            disabled={isGenerating}
+          >
+            <RefreshCw className={`mr-2 size-4 ${isGenerating ? 'animate-spin' : ''}`} />
+            {isGenerating ? 'Generating...' : 'Generate'}
+          </Button>
           <Button variant="outline" size="icon" onClick={() => navigateWeek(-1)}>
             <ChevronLeft className="size-4" />
             <span className="sr-only">Previous week</span>

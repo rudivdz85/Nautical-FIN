@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { dailyTrackerService } from '../../../packages/core/src/services/daily-tracker.service'
 import { dailyTrackerRepository } from '../../../packages/core/src/repositories/daily-tracker.repository'
+import { recurringTransactionsRepository } from '../../../packages/core/src/repositories/recurring-transactions.repository'
+import { budgetsRepository } from '../../../packages/core/src/repositories/budgets.repository'
+import { accountsRepository } from '../../../packages/core/src/repositories/accounts.repository'
+import { transactionsRepository } from '../../../packages/core/src/repositories/transactions.repository'
 import { NotFoundError, ValidationError } from '../../../packages/core/src/errors/index'
 import type { DailyTrackerEntry } from '../../../packages/core/src/types/daily-tracker'
 
@@ -13,6 +17,30 @@ vi.mock('../../../packages/core/src/repositories/daily-tracker.repository', () =
     update: vi.fn(),
     deleteByUserAndDateRange: vi.fn(),
     delete: vi.fn(),
+  },
+}))
+
+vi.mock('../../../packages/core/src/repositories/recurring-transactions.repository', () => ({
+  recurringTransactionsRepository: {
+    findByUserId: vi.fn(),
+  },
+}))
+
+vi.mock('../../../packages/core/src/repositories/budgets.repository', () => ({
+  budgetsRepository: {
+    findByUserId: vi.fn(),
+  },
+}))
+
+vi.mock('../../../packages/core/src/repositories/accounts.repository', () => ({
+  accountsRepository: {
+    findByUserId: vi.fn(),
+  },
+}))
+
+vi.mock('../../../packages/core/src/repositories/transactions.repository', () => ({
+  transactionsRepository: {
+    findByUserId: vi.fn(),
   },
 }))
 
@@ -234,6 +262,150 @@ describe('dailyTrackerService', () => {
       await expect(
         dailyTrackerService.delete(mockDb, 'nonexistent', TEST_USER_ID),
       ).rejects.toThrow(NotFoundError)
+    })
+  })
+
+  describe('generateRange', () => {
+    function setupGenerateMocks({
+      recurring = [],
+      budgets = [],
+      accounts = [],
+      recentTxns = [],
+    }: {
+      recurring?: Array<Record<string, unknown>>
+      budgets?: Array<Record<string, unknown>>
+      accounts?: Array<Record<string, unknown>>
+      recentTxns?: Array<Record<string, unknown>>
+    } = {}) {
+      vi.mocked(recurringTransactionsRepository.findByUserId).mockResolvedValue(recurring as never)
+      vi.mocked(budgetsRepository.findByUserId).mockResolvedValue(budgets as never)
+      vi.mocked(accountsRepository.findByUserId).mockResolvedValue(accounts as never)
+      vi.mocked(transactionsRepository.findByUserId).mockResolvedValue(recentTxns as never)
+      vi.mocked(dailyTrackerRepository.deleteByUserAndDateRange).mockResolvedValue(0)
+
+      let callCount = 0
+      vi.mocked(dailyTrackerRepository.create).mockImplementation((_db, data) => {
+        callCount++
+        return Promise.resolve(makeEntry({
+          id: `gen-${callCount}`,
+          ...(data as Partial<DailyTrackerEntry>),
+        }))
+      })
+    }
+
+    it('generates entries for each day in range', async () => {
+      setupGenerateMocks()
+
+      const result = await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-10', '2025-02-16',
+      )
+
+      expect(result).toHaveLength(7)
+      expect(dailyTrackerRepository.create).toHaveBeenCalledTimes(7)
+    })
+
+    it('clears existing entries before generating', async () => {
+      setupGenerateMocks()
+      vi.mocked(dailyTrackerRepository.deleteByUserAndDateRange).mockResolvedValue(5)
+
+      await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-10', '2025-02-16',
+      )
+
+      expect(dailyTrackerRepository.deleteByUserAndDateRange).toHaveBeenCalledWith(
+        mockDb, TEST_USER_ID, '2025-02-10', '2025-02-16',
+      )
+    })
+
+    it('marks paydays based on recurring income', async () => {
+      setupGenerateMocks({
+        recurring: [
+          {
+            id: 'rec-1',
+            name: 'Salary',
+            transactionType: 'credit',
+            frequency: 'monthly',
+            dayOfMonth: 25,
+            dayOfWeek: null,
+            amount: '30000.00',
+            amountMax: null,
+          },
+        ],
+      })
+
+      const result = await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-23', '2025-02-27',
+      )
+
+      const payday = result.find((e) => e.date === '2025-02-25')
+      const nonPayday = result.find((e) => e.date === '2025-02-23')
+
+      expect(payday?.isPayday).toBe(true)
+      expect(payday?.expectedIncome).toBe('30000.00')
+      expect(nonPayday?.isPayday).toBe(false)
+      expect(nonPayday?.expectedIncome).toBe('0.00')
+    })
+
+    it('computes running balance correctly', async () => {
+      setupGenerateMocks({
+        accounts: [
+          { id: 'acc-1', classification: 'spending', currentBalance: '10000.00', accountType: 'cheque', creditLimit: null },
+        ],
+      })
+
+      const result = await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-10', '2025-02-12',
+      )
+
+      expect(result).toHaveLength(3)
+      // Starting balance 10000, no income/expenses/debt, no historical spend → balance stays 10000
+      for (const entry of result) {
+        expect(parseFloat(entry.runningBalance ?? '0')).toBe(10000)
+      }
+    })
+
+    it('handles no budget and no recurring transactions', async () => {
+      setupGenerateMocks()
+
+      const result = await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-10', '2025-02-10',
+      )
+
+      expect(result).toHaveLength(1)
+      expect(result[0]?.expectedIncome).toBe('0.00')
+      expect(result[0]?.expectedExpenses).toBe('0.00')
+      expect(result[0]?.expectedDebtPayments).toBe('0.00')
+      expect(result[0]?.isPayday).toBe(false)
+    })
+
+    it('uses budget for daily expense allocation', async () => {
+      setupGenerateMocks({
+        budgets: [
+          { id: 'bud-1', status: 'active', totalPlannedExpenses: '28000.00' },
+        ],
+      })
+
+      const result = await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-15', '2025-02-15',
+      )
+
+      // Feb 2025 has 28 days, so daily expense = 28000 / 28 = 1000
+      expect(parseFloat(result[0]?.expectedExpenses ?? '0')).toBeCloseTo(1000, 0)
+    })
+
+    it('sets alerts when running balance goes negative', async () => {
+      setupGenerateMocks({
+        budgets: [
+          { id: 'bud-1', status: 'active', totalPlannedExpenses: '300000.00' },
+        ],
+      })
+
+      const result = await dailyTrackerService.generateRange(
+        mockDb, TEST_USER_ID, '2025-02-15', '2025-02-15',
+      )
+
+      expect(result[0]?.hasAlerts).toBe(true)
+      expect(result[0]?.alerts).toBeTruthy()
     })
   })
 })

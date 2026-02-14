@@ -9,6 +9,8 @@ import {
   PiggyBank,
   CreditCard,
   Tags,
+  Upload,
+  HelpCircle,
   Settings,
 } from 'lucide-react'
 
@@ -26,5 +28,7 @@ export const secondaryNav = [
   { title: 'Recurring', href: '/recurring', icon: Repeat },
   { title: 'Savings Goals', href: '/savings', icon: PiggyBank },
   { title: 'Debts', href: '/debts', icon: CreditCard },
+  { title: 'Import', href: '/import', icon: Upload },
+  { title: 'Help', href: '/help', icon: HelpCircle },
   { title: 'Settings', href: '/settings', icon: Settings },
 ]

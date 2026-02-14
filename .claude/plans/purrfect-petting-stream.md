@@ -1,82 +1,103 @@
-# Dashboard Page — Implementation Plan
+# Frontend Tests — Implementation Plan
 
 ## Context
-The Dashboard is the landing page — the user's financial overview at a glance. It's the final frontend page (12/12). All backend services are already built. The dashboard pulls data from multiple services server-side and renders summary cards, a tasks list, and quick-glance widgets.
+The project has 461 backend service tests but zero frontend testing infrastructure. No vitest config for web, no @testing-library/react, no jsdom. We need to set up the infrastructure and write tests for utility functions, the API client, and representative page components.
 
-## Architecture
+## Approach: Vitest Workspace
 
-Pure server component fetches all data via `Promise.all()`, passes to a client component for interactivity (task dismissal). No client-side data fetching needed — everything renders on initial load and refreshes with `router.refresh()`.
-
-## Dashboard Widgets (from solution doc)
-
-**Row 1 — Key Metrics (4 cards)**:
-1. **Net Worth** — From `netWorthSnapshotsService.getLatest()`, fallback to manual calc (sum of account balances minus debts)
-2. **Available to Spend** — Sum of spending-classified account balances (`classification === 'spending'`)
-3. **Total Savings** — From latest snapshot or sum of savings account balances
-4. **Total Debt** — Sum of active debt `currentBalance`
-
-**Row 2 — Budget & Activity (2 wider cards)**:
-5. **Monthly Budget** — Active budget summary: planned income, planned expenses, unallocated. If no active budget, show "No active budget" with link.
-6. **Recent Transactions** — Last 5 transactions with type badges.
-
-**Row 3 — Goals & Tasks (2 wider cards)**:
-7. **Savings Goals** — Active goals with progress bars (currentAmount/targetAmount).
-8. **Pending Tasks** — List of pending/snoozed tasks with priority badges and dismiss/complete actions.
+Use `vitest.workspace.ts` to define two projects (backend: node, frontend: jsdom) so `pnpm test` runs both in parallel with a single command. The existing `vitest.config.ts` is replaced.
 
 ## Implementation Steps
 
-### Step 1: Server Component (`page.tsx`)
-Fetch all data in parallel:
+### Step 1: Install dependencies
+```bash
+pnpm add -Dw @testing-library/react @testing-library/jest-dom @testing-library/user-event jsdom @types/react @types/react-dom
 ```
-const [accounts, latestSnapshot, budgets, debts, savingsGoals, tasks, recentTransactions] = await Promise.all([
-  accountsService.list(db, user.id),
-  netWorthSnapshotsService.getLatest(db, user.id),
-  budgetsService.list(db, user.id),
-  debtsService.list(db, user.id),
-  savingsGoalsService.list(db, user.id),
-  tasksService.list(db, user.id, ['pending', 'snoozed']),
-  transactionsService.list(db, user.id, { /* last 5 */ }),
-])
-```
-Compute derived values server-side (net worth, available spend, totals) and pass to client.
 
-### Step 2: Dashboard Page Client (`dashboard-page-client.tsx`)
+### Step 2: Create `vitest.workspace.ts` (replaces `vitest.config.ts`)
+Two workspace projects:
+- **backend** — `environment: 'node'`, `include: ['__tests__/core/**/*.test.ts']`, existing aliases
+- **frontend** — `environment: 'jsdom'`, `include: ['__tests__/web/**/*.test.{ts,tsx}']`, `@` alias → `apps/web/src`, plus `@fin/core` aliases, setup file for jest-dom matchers
 
-**Props**: All fetched data + pre-computed summaries.
+### Step 3: Create `__tests__/web/setup.ts`
+Single line: `import '@testing-library/jest-dom/vitest'` to register `.toBeInTheDocument()` etc.
 
-**Layout**: Responsive grid using CSS grid.
-- Row 1: `grid-cols-4` — 4 metric cards
-- Row 2: `grid-cols-2` — Budget summary + Recent transactions
-- Row 3: `grid-cols-2` — Savings goals + Tasks
+### Step 4: Verify backend tests still pass
+Run `pnpm test` — all 461 backend tests must pass before proceeding.
 
-**Metric cards**: Use existing `Card` component. Each shows label, value (formatted with `formatCurrency`), and an icon.
+### Step 5: Format utility tests (`__tests__/web/lib/format.test.ts`)
+~30 tests for all 13 pure functions in `apps/web/src/lib/format.ts`:
+- `formatCurrency` — number, string, zero, negative, custom currency
+- `formatDate` — valid date, null, undefined
+- `formatDebtType`, `formatGoalType`, `formatTransactionType`, `formatTransactionSource`, `formatBudgetStatus`, `formatFrequency`, `formatAccountType` — known labels + fallback
+- `getWeekRange` — Wednesday, Sunday, Monday inputs
+- `formatWeekday`, `formatShortDate` — basic formatting
+- `formatMonth` — month/year formatting
 
-**Budget card**: Status badge, income/expenses/unallocated with progress-style layout. Link to /budget.
+### Step 6: API client tests (`__tests__/web/lib/api-client.test.ts`)
+~12 tests mocking `globalThis.fetch` via `vi.stubGlobal`:
+- `apiClient.get` — success extracts `.data`, error throws `ApiError`
+- `apiClient.post` — correct method + body, error handling
+- `apiClient.patch` — correct method + body
+- `apiClient.delete` — correct method, no body
+- `ApiError` class — constructor sets code/message/status/name
 
-**Recent transactions**: Mini table (last 5) with type badge, description, amount. Link to /transactions.
+### Step 7: Dashboard component tests (`__tests__/web/app/dashboard/dashboard-page-client.test.tsx`)
+~10 tests. Props-only component (no fetching), simplest to test.
+- Renders all 4 metric cards (net worth, available, savings, debt)
+- Active budget section vs "No active budget" empty state
+- Recent transactions list vs empty state
+- Savings goals with progress bars vs empty state
+- Pending tasks with action buttons vs empty state
 
-**Savings goals card**: Progress bars with percentage. Link to /savings.
+Mocks needed: `next/navigation`, `next/link`, `sonner`, `@/lib/api-client`
 
-**Tasks card**: List with priority badges (high=destructive, medium=default, low=secondary), dismiss/complete via `apiClient.patch`. Uses `router.refresh()` after action.
+### Step 8: Help/FAQ component tests (`__tests__/web/app/help/help-page-client.test.tsx`)
+~8 tests. Good for testing user interaction (search + filter).
+- Renders default FAQs when DB returns empty
+- Search input filters questions by text
+- Category badge filters by category
+- Clearing search restores all items
+- Empty search result message
 
-### Step 3: Build & Verify
-- `pnpm build` passes
-- `pnpm test` passes (451 tests)
+Mocks needed: `next/navigation`, `next/link`
+
+### Step 9: Tracker component tests (`__tests__/web/app/tracker/tracker-page-client.test.tsx`)
+~8 tests. Tests async data fetching and navigation.
+- Loading state on mount
+- Empty state when API returns []
+- Renders week table with entry data
+- Payday badge appears for isPayday entries
+- Summary cards show correct totals
+
+Mocks needed: `next/navigation`, `sonner`, `@/lib/api-client`, `@/lib/format` (partial — getWeekRange)
+
+### Step 10: Build and verify
+`pnpm build && pnpm test` — all tests pass.
 
 ## Files Summary
 
-**New files (1)**:
+**New files (6):**
+- `vitest.workspace.ts`
+- `__tests__/web/setup.ts`
+- `__tests__/web/lib/format.test.ts`
+- `__tests__/web/lib/api-client.test.ts`
+- `__tests__/web/app/dashboard/dashboard-page-client.test.tsx`
+- `__tests__/web/app/help/help-page-client.test.tsx`
+- `__tests__/web/app/tracker/tracker-page-client.test.tsx`
+
+**Modified files (1):**
+- `package.json` — add devDependencies, add `test:backend`/`test:frontend` scripts
+
+**Removed files (1):**
+- `vitest.config.ts` — replaced by workspace
+
+**Key source files under test:**
+- `apps/web/src/lib/format.ts`
+- `apps/web/src/lib/api-client.ts`
 - `apps/web/src/app/(auth)/dashboard/dashboard-page-client.tsx`
+- `apps/web/src/app/(auth)/help/help-page-client.tsx`
+- `apps/web/src/app/(auth)/tracker/tracker-page-client.tsx`
 
-**Modified files (1)**:
-- `apps/web/src/app/(auth)/dashboard/page.tsx` — placeholder → server component
-
-**Key reference files**:
-- `packages/core/src/services/net-worth-snapshots.service.ts` — getLatest
-- `packages/core/src/services/tasks.service.ts` — list with status filter
-- `packages/core/src/services/budgets.service.ts` — list (find active)
-- `packages/core/src/services/debts.service.ts` — list
-- `packages/core/src/services/savings-goals.service.ts` — list
-- `packages/core/src/services/accounts.service.ts` — list
-- `packages/core/src/services/transactions.service.ts` — list with filters
-- `apps/web/src/lib/format.ts` — formatCurrency, formatDate, formatMonth, etc.
+## Estimated new tests: ~68
+## Total after: ~529 tests (461 backend + 68 frontend)

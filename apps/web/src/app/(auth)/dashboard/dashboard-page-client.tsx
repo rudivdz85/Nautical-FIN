@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { Budget, Transaction, SavingsGoal, Task } from '@fin/core'
+import { useState } from 'react'
 import {
   Wallet,
   TrendingUp,
@@ -12,6 +13,7 @@ import {
   CheckCircle2,
   XCircle,
   AlertCircle,
+  Camera,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -49,6 +51,24 @@ export function DashboardPageClient({
   pendingTasks,
 }: DashboardPageClientProps) {
   const router = useRouter()
+  const [snapshotting, setSnapshotting] = useState(false)
+
+  async function handleTakeSnapshot() {
+    setSnapshotting(true)
+    try {
+      await apiClient.post('/api/net-worth-snapshots/generate', {})
+      toast.success('Net worth snapshot saved')
+      router.refresh()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message)
+      } else {
+        toast.error('Failed to take snapshot')
+      }
+    } finally {
+      setSnapshotting(false)
+    }
+  }
 
   async function handleTaskAction(taskId: string, action: 'complete' | 'dismiss') {
     try {
@@ -66,11 +86,22 @@ export function DashboardPageClient({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          Your financial overview at a glance.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            Your financial overview at a glance.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleTakeSnapshot}
+          disabled={snapshotting}
+        >
+          <Camera className="mr-2 size-4" />
+          {snapshotting ? 'Saving...' : 'Take Snapshot'}
+        </Button>
       </div>
 
       {/* Row 1: Key Metrics */}

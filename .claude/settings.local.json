@@ -22,7 +22,11 @@
       "WebFetch(domain:ui.shadcn.com)",
       "Bash(pnpm dlx:*)",
       "Bash(pnpm --filter web build:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(cat:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm vitest run:*)"
     ]
   }
 }

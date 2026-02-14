@@ -1,5 +1,7 @@
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 import { netWorthSnapshotsRepository } from '../repositories/net-worth-snapshots.repository'
+import { accountsRepository } from '../repositories/accounts.repository'
+import { debtsRepository } from '../repositories/debts.repository'
 import { createNetWorthSnapshotSchema } from '../validation/net-worth-snapshots'
 import type { NetWorthSnapshot } from '../types/net-worth-snapshots'
 import { NotFoundError, ValidationError } from '../errors/index'
@@ -50,6 +52,76 @@ export const netWorthSnapshotsService = {
       totalSavings: data.totalSavings ?? null,
       totalDebt: data.totalDebt ?? null,
       breakdown: data.breakdown ?? null,
+    })
+  },
+
+  async generateSnapshot(db: Database, userId: string): Promise<NetWorthSnapshot> {
+    const [accounts, debts] = await Promise.all([
+      accountsRepository.findByUserId(db, userId),
+      debtsRepository.findByUserId(db, userId),
+    ])
+
+    const totalAssets = accounts.reduce(
+      (sum, a) => sum + parseFloat(a.currentBalance),
+      0,
+    )
+
+    const totalLiabilities = debts.reduce(
+      (sum, d) => sum + parseFloat(d.currentBalance),
+      0,
+    )
+
+    const netWorth = totalAssets - totalLiabilities
+
+    const totalCashSpend = accounts
+      .filter((a) => a.classification === 'spending')
+      .reduce((sum, a) => sum + parseFloat(a.currentBalance), 0)
+
+    const totalSavings = accounts
+      .filter((a) => a.accountType === 'savings')
+      .reduce((sum, a) => sum + parseFloat(a.currentBalance), 0)
+
+    const totalCreditAvailable = accounts
+      .filter((a) => a.accountType === 'credit_card' && a.creditLimit)
+      .reduce(
+        (sum, a) => sum + (parseFloat(a.creditLimit ?? '0') - parseFloat(a.currentBalance)),
+        0,
+      )
+
+    const today = new Date().toISOString().split('T')[0] ?? ''
+
+    // Upsert: delete existing snapshot for today if it exists
+    const existing = await netWorthSnapshotsRepository.findByDate(db, userId, today)
+    if (existing) {
+      await netWorthSnapshotsRepository.delete(db, existing.id, userId)
+    }
+
+    const breakdown = {
+      accounts: accounts.map((a) => ({
+        id: a.id,
+        name: a.name,
+        type: a.accountType,
+        classification: a.classification,
+        balance: a.currentBalance,
+      })),
+      debts: debts.map((d) => ({
+        id: d.id,
+        name: d.name,
+        balance: d.currentBalance,
+      })),
+    }
+
+    return netWorthSnapshotsRepository.create(db, {
+      userId,
+      snapshotDate: today,
+      totalAssets: totalAssets.toFixed(2),
+      totalLiabilities: totalLiabilities.toFixed(2),
+      netWorth: netWorth.toFixed(2),
+      totalCashSpend: totalCashSpend.toFixed(2),
+      totalCreditAvailable: totalCreditAvailable.toFixed(2),
+      totalSavings: totalSavings.toFixed(2),
+      totalDebt: totalLiabilities.toFixed(2),
+      breakdown,
     })
   },
 
