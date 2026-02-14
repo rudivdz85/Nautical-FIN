@@ -32,6 +32,18 @@ vi.mock('../../../packages/core/src/repositories/accounts.repository', () => ({
   },
 }))
 
+vi.mock('../../../packages/core/src/repositories/categorization-rules.repository', () => ({
+  categorizationRulesRepository: {
+    findByUserId: vi.fn().mockResolvedValue([]),
+  },
+}))
+
+vi.mock('../../../packages/core/src/repositories/merchant-mappings.repository', () => ({
+  merchantMappingsRepository: {
+    findByUserId: vi.fn().mockResolvedValue([]),
+  },
+}))
+
 const mockDb = {} as Parameters<typeof statementImportsService.list>[0]
 const TEST_USER_ID = '11111111-1111-1111-1111-111111111111'
 const TEST_ACCOUNT_ID = '22222222-2222-2222-2222-222222222222'

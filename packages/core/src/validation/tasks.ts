@@ -11,6 +11,12 @@ const taskTypes = [
   'unusual_spending',
   'goal_milestone',
   'bill_increase',
+  'savings_goal_track',
+  'uncategorized_transactions',
+  'surplus_action',
+  'planned_expense_reminder',
+  'planned_expense_warning',
+  'custom',
 ] as const
 
 const taskPriorities = ['high', 'medium', 'low'] as const

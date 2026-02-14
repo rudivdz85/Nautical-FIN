@@ -2,12 +2,16 @@ import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 import { statementImportsRepository } from '../repositories/statement-imports.repository'
 import { transactionsRepository } from '../repositories/transactions.repository'
 import { accountsRepository } from '../repositories/accounts.repository'
+import { categorizationRulesRepository } from '../repositories/categorization-rules.repository'
+import { merchantMappingsRepository } from '../repositories/merchant-mappings.repository'
 import {
   createStatementImportSchema,
   processImportSchema,
 } from '../validation/statement-imports'
 import type { StatementImport, ImportResult } from '../types/statement-imports'
 import type { ParsedTransactionInput } from '../validation/statement-imports'
+import type { CategorizationRule } from '../types/categorization-rules'
+import type { MerchantMapping } from '../types/merchant-mappings'
 import { NotFoundError, ValidationError } from '../errors/index'
 
 type Database = NeonHttpDatabase
@@ -84,6 +88,11 @@ export const statementImportsService = {
       throw new NotFoundError('Account', imp.accountId)
     }
 
+    const [rules, mappings] = await Promise.all([
+      categorizationRulesRepository.findByUserId(db, userId),
+      merchantMappingsRepository.findByUserId(db, userId),
+    ])
+
     let imported = 0
     let duplicates = 0
     let failed = 0
@@ -97,6 +106,18 @@ export const statementImportsService = {
           continue
         }
 
+        const merchantNormalized = resolveMerchant(
+          row.merchantOriginal ?? row.description,
+          mappings,
+        )
+
+        const matchedRule = matchCategorizationRule(
+          rules,
+          merchantNormalized,
+          row.description,
+          row.amount,
+        )
+
         await transactionsRepository.create(db, {
           userId,
           accountId: imp.accountId,
@@ -105,12 +126,22 @@ export const statementImportsService = {
           postedDate: row.postedDate,
           description: row.description,
           merchantOriginal: row.merchantOriginal,
+          merchantNormalized: merchantNormalized !== (row.merchantOriginal ?? row.description)
+            ? merchantNormalized
+            : row.merchantOriginal,
           transactionType: row.transactionType,
           externalId: row.externalId,
           source: 'import',
           isReviewed: false,
           importId,
+          categoryId: matchedRule?.categoryId,
+          categorizationMethod: matchedRule ? 'rule' : undefined,
+          categorizationConfidence: matchedRule?.confidence ?? undefined,
         })
+
+        if (matchedRule) {
+          await categorizationRulesRepository.incrementApplied(db, matchedRule.id, userId)
+        }
 
         const balanceDelta = row.transactionType === 'debit'
           ? `-${row.amount}`
@@ -143,6 +174,58 @@ export const statementImportsService = {
       failed,
     }
   },
+}
+
+function resolveMerchant(
+  originalName: string,
+  mappings: MerchantMapping[],
+): string {
+  if (!originalName) return originalName
+  const lower = originalName.toLowerCase()
+  const mapping = mappings.find(
+    (m) => m.originalName.toLowerCase() === lower,
+  )
+  return mapping ? mapping.normalizedName : originalName
+}
+
+function matchCategorizationRule(
+  rules: CategorizationRule[],
+  merchantName: string,
+  description: string,
+  amount: string,
+): CategorizationRule | undefined {
+  const amountNum = parseFloat(amount)
+  const merchantLower = merchantName.toLowerCase()
+
+  for (const rule of rules) {
+    if (rule.amountMin !== null && amountNum < parseFloat(rule.amountMin)) continue
+    if (rule.amountMax !== null && amountNum > parseFloat(rule.amountMax)) continue
+
+    if (rule.merchantExact) {
+      if (merchantLower === rule.merchantExact.toLowerCase()) return rule
+      continue
+    }
+
+    if (rule.merchantPattern) {
+      try {
+        if (new RegExp(rule.merchantPattern, 'i').test(merchantName)) return rule
+      } catch {
+        // skip invalid regex
+      }
+      continue
+    }
+
+    if (rule.descriptionPattern) {
+      try {
+        if (new RegExp(rule.descriptionPattern, 'i').test(description)) return rule
+      } catch {
+        // skip invalid regex
+      }
+      continue
+    }
+  }
+
+  return undefined
 }
 
 async function checkDuplicate(
