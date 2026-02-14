@@ -3,6 +3,7 @@ import {
   CalendarCheck,
   ArrowLeftRight,
   Wallet,
+  ClipboardCheck,
   MessageSquare,
   Landmark,
   Repeat,
@@ -19,6 +20,7 @@ export const primaryNav = [
   { title: 'Daily Tracker', href: '/tracker', icon: CalendarCheck },
   { title: 'Transactions', href: '/transactions', icon: ArrowLeftRight },
   { title: 'Budget', href: '/budget', icon: Wallet },
+  { title: 'Actuals', href: '/actuals', icon: ClipboardCheck },
   { title: 'Chat', href: '/chat', icon: MessageSquare },
 ]
 
