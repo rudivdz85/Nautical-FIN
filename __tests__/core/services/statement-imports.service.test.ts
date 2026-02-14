@@ -499,6 +499,98 @@ describe('statementImportsService', () => {
       ).rejects.toThrow(ValidationError)
     })
 
+    it('returns balance check when opening and closing balances are provided', async () => {
+      const imp = makeImport({
+        openingBalance: '10000.00',
+        closingBalance: '8500.00',
+      })
+      vi.mocked(statementImportsRepository.findById).mockResolvedValue(imp)
+      vi.mocked(accountsRepository.findById).mockResolvedValue(makeAccount())
+      vi.mocked(transactionsRepository.findByDateAndAmount).mockResolvedValue([])
+      vi.mocked(transactionsRepository.create).mockResolvedValue(makeTransaction())
+      vi.mocked(accountsRepository.adjustBalance).mockResolvedValue(makeAccount())
+      vi.mocked(statementImportsRepository.update).mockResolvedValue(makeImport())
+
+      const result = await statementImportsService.process(mockDb, TEST_IMPORT_ID, TEST_USER_ID, {
+        transactions: [
+          {
+            transactionDate: '2025-01-15',
+            amount: '1000.00',
+            description: 'Groceries',
+            transactionType: 'debit',
+          },
+          {
+            transactionDate: '2025-01-20',
+            amount: '500.00',
+            description: 'Another debit',
+            transactionType: 'debit',
+          },
+        ],
+      })
+
+      expect(result.balanceCheck).toBeDefined()
+      expect(result.balanceCheck!.openingBalance).toBe('10000.00')
+      expect(result.balanceCheck!.closingBalance).toBe('8500.00')
+      expect(result.balanceCheck!.computedClosing).toBe('8500.00')
+      expect(result.balanceCheck!.difference).toBe('0.00')
+      expect(result.balanceCheck!.isReconciled).toBe(true)
+    })
+
+    it('detects balance discrepancy', async () => {
+      const imp = makeImport({
+        openingBalance: '10000.00',
+        closingBalance: '9000.00',
+      })
+      vi.mocked(statementImportsRepository.findById).mockResolvedValue(imp)
+      vi.mocked(accountsRepository.findById).mockResolvedValue(makeAccount())
+      vi.mocked(transactionsRepository.findByDateAndAmount).mockResolvedValue([])
+      vi.mocked(transactionsRepository.create).mockResolvedValue(makeTransaction())
+      vi.mocked(accountsRepository.adjustBalance).mockResolvedValue(makeAccount())
+      vi.mocked(statementImportsRepository.update).mockResolvedValue(makeImport())
+
+      const result = await statementImportsService.process(mockDb, TEST_IMPORT_ID, TEST_USER_ID, {
+        transactions: [
+          {
+            transactionDate: '2025-01-15',
+            amount: '500.00',
+            description: 'Only 500 debit',
+            transactionType: 'debit',
+          },
+        ],
+      })
+
+      expect(result.balanceCheck).toBeDefined()
+      expect(result.balanceCheck!.computedClosing).toBe('9500.00')
+      expect(result.balanceCheck!.difference).toBe('500.00')
+      expect(result.balanceCheck!.isReconciled).toBe(false)
+    })
+
+    it('omits balance check when no balances on import', async () => {
+      const imp = makeImport({
+        openingBalance: null,
+        closingBalance: null,
+      })
+      vi.mocked(statementImportsRepository.findById).mockResolvedValue(imp)
+      vi.mocked(accountsRepository.findById).mockResolvedValue(makeAccount())
+      vi.mocked(transactionsRepository.findByDateAndAmount).mockResolvedValue([])
+      vi.mocked(transactionsRepository.create).mockResolvedValue(makeTransaction())
+      vi.mocked(accountsRepository.adjustBalance).mockResolvedValue(makeAccount())
+      vi.mocked(statementImportsRepository.update).mockResolvedValue(makeImport())
+
+      const result = await statementImportsService.process(mockDb, TEST_IMPORT_ID, TEST_USER_ID, {
+        transactions: [
+          {
+            transactionDate: '2025-01-15',
+            amount: '50.00',
+            description: 'Test',
+            transactionType: 'debit',
+          },
+        ],
+      })
+
+      expect(result.balanceCheck).toBeUndefined()
+    })
+
     it('preserves merchantOriginal from parsed data', async () => {
       vi.mocked(statementImportsRepository.findById).mockResolvedValue(makeImport())
       vi.mocked(accountsRepository.findById).mockResolvedValue(makeAccount())

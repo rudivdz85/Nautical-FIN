@@ -153,6 +153,26 @@ export const recurringTransactionsService = {
     return transaction
   },
 
+  async autoGenerate(
+    db: Database,
+    userId: string,
+    asOfDate: string,
+  ): Promise<Transaction[]> {
+    const due = await recurringTransactionsRepository.findDue(db, userId, asOfDate)
+    const generated: Transaction[] = []
+
+    for (const rec of due) {
+      if (rec.requiresConfirmation || rec.amountType !== 'fixed' || !rec.amount) {
+        continue
+      }
+
+      const transaction = await this.generateInstance(db, rec.id, userId, rec.amount)
+      generated.push(transaction)
+    }
+
+    return generated
+  },
+
   async skip(db: Database, id: string, userId: string): Promise<RecurringTransaction> {
     const recurring = await recurringTransactionsRepository.findById(db, id, userId)
     if (!recurring) {

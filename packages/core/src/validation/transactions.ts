@@ -48,6 +48,12 @@ export const updateTransactionSchema = z
     message: 'At least one field must be provided for update',
   })
 
+export const bulkCategorizeSchema = z.object({
+  transactionIds: z.array(z.string().uuid()).min(1, 'At least one transaction ID is required'),
+  categoryId: z.string().uuid(),
+})
+
 export type CreateTransactionInput = z.infer<typeof createTransactionSchema>
 export type CreateTransferInput = z.infer<typeof createTransferSchema>
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>
+export type BulkCategorizeInput = z.infer<typeof bulkCategorizeSchema>

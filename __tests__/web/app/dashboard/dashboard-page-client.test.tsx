@@ -18,7 +18,12 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@/lib/api-client', () => ({
-  apiClient: { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
+  apiClient: {
+    get: vi.fn().mockResolvedValue([]),
+    post: vi.fn().mockResolvedValue([]),
+    patch: vi.fn().mockResolvedValue({}),
+    delete: vi.fn().mockResolvedValue({}),
+  },
   ApiError: class extends Error {
     code: string
     status: number
@@ -119,6 +124,7 @@ const defaultProps = {
   recentTransactions: [] as Transaction[],
   savingsGoals: [] as SavingsGoal[],
   pendingTasks: [] as Task[],
+  unreadInsights: [],
 }
 
 describe('DashboardPageClient', () => {
@@ -201,8 +207,9 @@ describe('DashboardPageClient', () => {
     })
   })
 
-  it('renders the Take Snapshot button', () => {
+  it('renders the Snapshot and Analyze buttons', () => {
     render(<DashboardPageClient {...defaultProps} />)
-    expect(screen.getByText('Take Snapshot')).toBeInTheDocument()
+    expect(screen.getByText('Snapshot')).toBeInTheDocument()
+    expect(screen.getByText('Analyze')).toBeInTheDocument()
   })
 })

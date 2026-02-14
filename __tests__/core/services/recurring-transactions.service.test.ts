@@ -528,6 +528,49 @@ describe('recurringTransactionsService', () => {
     })
   })
 
+  describe('autoGenerate', () => {
+    it('generates instances for due fixed-amount recurring transactions', async () => {
+      const rec1 = makeRecurring({ id: 'rec-1', amountType: 'fixed', amount: '5000.00', requiresConfirmation: false })
+      const rec2 = makeRecurring({ id: 'rec-2', amountType: 'fixed', amount: '200.00', requiresConfirmation: false })
+      vi.mocked(recurringTransactionsRepository.findDue).mockResolvedValue([rec1, rec2])
+      vi.mocked(recurringTransactionsRepository.findById)
+        .mockResolvedValueOnce(rec1)
+        .mockResolvedValueOnce(rec2)
+      vi.mocked(transactionsRepository.create).mockResolvedValue(makeTransaction())
+      vi.mocked(accountsRepository.adjustBalance).mockResolvedValue(makeAccount())
+      vi.mocked(recurringTransactionsRepository.update).mockResolvedValue(makeRecurring())
+
+      const result = await recurringTransactionsService.autoGenerate(mockDb, TEST_USER_ID, '2025-02-01')
+
+      expect(result).toHaveLength(2)
+      expect(transactionsRepository.create).toHaveBeenCalledTimes(2)
+    })
+
+    it('skips variable-amount transactions requiring confirmation', async () => {
+      const fixedRec = makeRecurring({ id: 'rec-1', amountType: 'fixed', amount: '5000.00', requiresConfirmation: false })
+      const variableRec = makeRecurring({ id: 'rec-2', amountType: 'variable', amount: null, requiresConfirmation: true })
+      vi.mocked(recurringTransactionsRepository.findDue).mockResolvedValue([fixedRec, variableRec])
+      vi.mocked(recurringTransactionsRepository.findById).mockResolvedValue(fixedRec)
+      vi.mocked(transactionsRepository.create).mockResolvedValue(makeTransaction())
+      vi.mocked(accountsRepository.adjustBalance).mockResolvedValue(makeAccount())
+      vi.mocked(recurringTransactionsRepository.update).mockResolvedValue(makeRecurring())
+
+      const result = await recurringTransactionsService.autoGenerate(mockDb, TEST_USER_ID, '2025-02-01')
+
+      expect(result).toHaveLength(1)
+      expect(transactionsRepository.create).toHaveBeenCalledTimes(1)
+    })
+
+    it('returns empty array when no due transactions', async () => {
+      vi.mocked(recurringTransactionsRepository.findDue).mockResolvedValue([])
+
+      const result = await recurringTransactionsService.autoGenerate(mockDb, TEST_USER_ID, '2025-02-01')
+
+      expect(result).toHaveLength(0)
+      expect(transactionsRepository.create).not.toHaveBeenCalled()
+    })
+  })
+
   describe('skip', () => {
     it('advances nextOccurrence without creating a transaction', async () => {
       const recurring = makeRecurring({ nextOccurrence: '2025-02-01', frequency: 'monthly', dayOfMonth: 1 })

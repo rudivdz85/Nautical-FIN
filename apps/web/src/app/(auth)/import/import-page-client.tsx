@@ -52,6 +52,7 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
   const [csvHeaders, setCsvHeaders] = useState<string[]>([])
   const [csvRows, setCsvRows] = useState<string[][]>([])
   const [filename, setFilename] = useState('')
+  const [fileType, setFileType] = useState<'csv' | 'ofx' | 'qfx'>('csv')
 
   // Column mapping
   const [dateCol, setDateCol] = useState(NONE)
@@ -93,6 +94,29 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
 
     setFilename(file.name)
 
+    const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+
+    if (ext === 'ofx' || ext === 'qfx') {
+      setFileType(ext)
+      const reader = new FileReader()
+      reader.onload = () => {
+        const content = reader.result as string
+        const parsed = parseOfxContent(content)
+        if (parsed.length === 0) {
+          toast.error('No valid transactions found in OFX/QFX file')
+          return
+        }
+        setTransactions(parsed)
+        setStep('review')
+      }
+      reader.onerror = () => {
+        toast.error('Failed to read OFX/QFX file')
+      }
+      reader.readAsText(file)
+      return
+    }
+
+    setFileType('csv')
     Papa.parse(file, {
       complete(results) {
         const data = results.data as string[][]
@@ -202,7 +226,7 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
       const importRecord = await apiClient.post<StatementImport>('/api/statement-imports', {
         accountId,
         filename,
-        fileType: 'csv',
+        fileType,
       })
 
       // Step 2: Process transactions
@@ -230,6 +254,7 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
     setCsvHeaders([])
     setCsvRows([])
     setFilename('')
+    setFileType('csv')
     setDateCol(NONE)
     setDescCol(NONE)
     setAmountCol(NONE)
@@ -251,7 +276,7 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
       <div>
         <h1 className="text-2xl font-semibold">Import Statement</h1>
         <p className="text-sm text-muted-foreground">
-          Upload a bank statement CSV to import transactions.
+          Upload a bank statement (CSV, OFX, or QFX) to import transactions.
         </p>
       </div>
 
@@ -288,20 +313,20 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
               <CardContent className="pt-6">
                 <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12 text-center">
                   <FileSpreadsheet className="size-12 text-muted-foreground/50" />
-                  <h3 className="mt-4 text-lg font-semibold">Upload CSV Statement</h3>
+                  <h3 className="mt-4 text-lg font-semibold">Upload Statement</h3>
                   <p className="mt-2 text-sm text-muted-foreground">
-                    Select a CSV file from your bank to import transactions.
+                    Select a CSV, OFX, or QFX file from your bank to import transactions.
                   </p>
                   <input
                     ref={fileRef}
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.ofx,.qfx"
                     className="hidden"
                     onChange={handleFileSelect}
                   />
                   <Button className="mt-6" onClick={() => fileRef.current?.click()}>
                     <Upload className="mr-2 size-4" />
-                    Choose CSV File
+                    Choose File
                   </Button>
                 </div>
               </CardContent>
@@ -476,7 +501,7 @@ export function ImportPageClient({ accounts }: ImportPageClientProps) {
                 </div>
 
                 <div className="flex justify-between">
-                  <Button variant="outline" onClick={() => setStep('map')}>
+                  <Button variant="outline" onClick={() => setStep(fileType === 'csv' ? 'map' : 'upload')}>
                     <ArrowLeft className="mr-2 size-4" />
                     Back
                   </Button>
@@ -642,6 +667,70 @@ function ImportStatusBadge({ status }: { status: string | null }) {
     default:
       return <Badge variant="secondary">{status ?? 'Unknown'}</Badge>
   }
+}
+
+function parseOfxContent(content: string): ParsedTransaction[] {
+  const transactions: ParsedTransaction[] = []
+
+  // Extract all STMTTRN blocks (works for both SGML and XML variants)
+  const trnRegex = /<STMTTRN>([\s\S]*?)(?:<\/STMTTRN>|(?=<STMTTRN>|<\/BANKTRANLIST))/gi
+  let match: RegExpExecArray | null
+
+  while ((match = trnRegex.exec(content)) !== null) {
+    const block = match[1] ?? ''
+
+    const dtPosted = extractOfxValue(block, 'DTPOSTED')
+    const amount = extractOfxValue(block, 'TRNAMT')
+    const name = extractOfxValue(block, 'NAME')
+    const memo = extractOfxValue(block, 'MEMO')
+    const fitId = extractOfxValue(block, 'FITID')
+    const trnType = extractOfxValue(block, 'TRNTYPE')
+
+    if (!dtPosted || !amount) continue
+
+    const numAmount = parseFloat(amount)
+    if (isNaN(numAmount) || numAmount === 0) continue
+
+    const description = name || memo || 'Unknown'
+    const transactionDate = parseOfxDate(dtPosted)
+    if (!transactionDate) continue
+
+    let transactionType: 'debit' | 'credit'
+    if (trnType) {
+      const upper = trnType.toUpperCase()
+      transactionType = ['CREDIT', 'DEP', 'DIRECTDEP', 'INT', 'DIV'].includes(upper)
+        ? 'credit'
+        : 'debit'
+    } else {
+      transactionType = numAmount >= 0 ? 'credit' : 'debit'
+    }
+
+    transactions.push({
+      transactionDate,
+      amount: Math.abs(numAmount).toFixed(2),
+      description: description.slice(0, 500),
+      transactionType,
+      merchantOriginal: (name || memo || '').slice(0, 200),
+      externalId: fitId || undefined,
+    })
+  }
+
+  return transactions
+}
+
+function extractOfxValue(block: string, tag: string): string | null {
+  // Handles both SGML style (<TAG>value\n) and XML style (<TAG>value</TAG>)
+  const regex = new RegExp(`<${tag}>([^<\\r\\n]+)`, 'i')
+  const match = regex.exec(block)
+  return match ? match[1]?.trim() ?? null : null
+}
+
+function parseOfxDate(raw: string): string | null {
+  // OFX dates: YYYYMMDD[HHmmss[.XXX]][gmt offset]
+  const dateMatch = raw.match(/^(\d{4})(\d{2})(\d{2})/)
+  if (!dateMatch) return null
+  const [, y, m, d] = dateMatch
+  return `${y}-${m}-${d}`
 }
 
 function normalizeDate(raw: string): string | null {

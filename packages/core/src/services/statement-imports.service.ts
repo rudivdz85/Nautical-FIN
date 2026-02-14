@@ -8,7 +8,7 @@ import {
   createStatementImportSchema,
   processImportSchema,
 } from '../validation/statement-imports'
-import type { StatementImport, ImportResult } from '../types/statement-imports'
+import type { StatementImport, ImportResult, BalanceCheck } from '../types/statement-imports'
 import type { ParsedTransactionInput } from '../validation/statement-imports'
 import type { CategorizationRule } from '../types/categorization-rules'
 import type { MerchantMapping } from '../types/merchant-mappings'
@@ -167,11 +167,14 @@ export const statementImportsService = {
       transactionsFailed: failed,
     })
 
+    const balanceCheck = computeBalanceCheck(imp, parsed.data.transactions)
+
     return {
       import: updated ?? imp,
       imported,
       duplicates,
       failed,
+      balanceCheck,
     }
   },
 }
@@ -226,6 +229,37 @@ function matchCategorizationRule(
   }
 
   return undefined
+}
+
+function computeBalanceCheck(
+  imp: StatementImport,
+  transactions: ParsedTransactionInput[],
+): BalanceCheck | undefined {
+  if (!imp.openingBalance && !imp.closingBalance) return undefined
+
+  const opening = parseFloat(imp.openingBalance ?? '0')
+  let running = opening
+
+  for (const row of transactions) {
+    const amt = parseFloat(row.amount)
+    if (row.transactionType === 'credit') {
+      running += amt
+    } else {
+      running -= amt
+    }
+  }
+
+  const computedClosing = Math.round(running * 100) / 100
+  const statedClosing = imp.closingBalance ? parseFloat(imp.closingBalance) : computedClosing
+  const difference = Math.round((computedClosing - statedClosing) * 100) / 100
+
+  return {
+    openingBalance: imp.openingBalance,
+    closingBalance: imp.closingBalance,
+    computedClosing: computedClosing.toFixed(2),
+    difference: difference.toFixed(2),
+    isReconciled: Math.abs(difference) < 0.01,
+  }
 }
 
 async function checkDuplicate(

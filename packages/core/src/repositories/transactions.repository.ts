@@ -1,4 +1,4 @@
-import { eq, and, between, desc, sql } from 'drizzle-orm'
+import { eq, and, between, desc, sql, inArray } from 'drizzle-orm'
 import type { NeonHttpDatabase } from 'drizzle-orm/neon-http'
 import { transactions } from '../db/schema'
 import type { Transaction, NewTransaction, TransactionFilters } from '../types/transactions'
@@ -125,6 +125,26 @@ export const transactionsRepository = {
           eq(transactions.amount, amount),
         ),
       )
+  },
+
+  async bulkUpdateCategory(
+    db: Database,
+    ids: string[],
+    userId: string,
+    categoryId: string,
+  ): Promise<number> {
+    const results = await db
+      .update(transactions)
+      .set({ categoryId, isReviewed: true, updatedAt: new Date() })
+      .where(
+        and(
+          inArray(transactions.id, ids),
+          eq(transactions.userId, userId),
+        ),
+      )
+      .returning({ id: transactions.id })
+
+    return results.length
   },
 
   async deleteByTransferPairId(db: Database, transferPairId: string): Promise<number> {

@@ -11,6 +11,7 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   ChevronDown,
+  Tags,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -38,6 +39,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent } from '@/components/ui/dialog'
 import { apiClient, ApiError } from '@/lib/api-client'
 import { formatCurrency, formatDate, formatTransactionType, formatTransactionSource } from '@/lib/format'
@@ -71,6 +73,9 @@ export function TransactionsPageClient({ accounts, categories }: TransactionsPag
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState>({ type: 'closed' })
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [bulkCategoryId, setBulkCategoryId] = useState('')
+  const [bulkLoading, setBulkLoading] = useState(false)
   const [filters, setFilters] = useState<Filters>({
     accountId: ALL,
     categoryId: ALL,
@@ -110,7 +115,48 @@ export function TransactionsPageClient({ accounts, categories }: TransactionsPag
 
   function handleSuccess() {
     setDialog({ type: 'closed' })
+    setSelected(new Set())
     fetchTransactions()
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function toggleSelectAll() {
+    if (selected.size === transactions.length) {
+      setSelected(new Set())
+    } else {
+      setSelected(new Set(transactions.map((t) => t.id)))
+    }
+  }
+
+  async function handleBulkCategorize() {
+    if (!bulkCategoryId || selected.size === 0) return
+    setBulkLoading(true)
+    try {
+      await apiClient.post('/api/transactions/bulk-categorize', {
+        transactionIds: Array.from(selected),
+        categoryId: bulkCategoryId,
+      })
+      toast.success(`${selected.size} transaction${selected.size > 1 ? 's' : ''} categorized`)
+      setSelected(new Set())
+      setBulkCategoryId('')
+      fetchTransactions()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message)
+      } else {
+        toast.error('Failed to categorize transactions')
+      }
+    } finally {
+      setBulkLoading(false)
+    }
   }
 
   const hasActiveFilters =
@@ -269,6 +315,39 @@ export function TransactionsPageClient({ accounts, categories }: TransactionsPag
         </Card>
       </div>
 
+      {selected.size > 0 && (
+        <div className="flex items-center gap-3 rounded-md border bg-muted/50 px-4 py-2">
+          <Tags className="size-4 text-muted-foreground" />
+          <span className="text-sm font-medium">{selected.size} selected</span>
+          <div className="w-44">
+            <Select value={bulkCategoryId} onValueChange={setBulkCategoryId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select category" />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            size="sm"
+            disabled={!bulkCategoryId || bulkLoading}
+            onClick={handleBulkCategorize}
+          >
+            {bulkLoading ? 'Categorizing...' : 'Categorize'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setSelected(new Set())}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="rounded-md border">
           <div className="p-8 text-center text-sm text-muted-foreground">Loading...</div>
@@ -296,6 +375,13 @@ export function TransactionsPageClient({ accounts, categories }: TransactionsPag
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-10">
+                  <Checkbox
+                    checked={transactions.length > 0 && selected.size === transactions.length}
+                    onCheckedChange={toggleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead>Description</TableHead>
                 <TableHead>Account</TableHead>
@@ -310,6 +396,13 @@ export function TransactionsPageClient({ accounts, categories }: TransactionsPag
                 const amount = parseFloat(txn.amount)
                 return (
                   <TableRow key={txn.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selected.has(txn.id)}
+                        onCheckedChange={() => toggleSelect(txn.id)}
+                        aria-label={`Select ${txn.description}`}
+                      />
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-sm">
                       {formatDate(txn.transactionDate)}
                     </TableCell>

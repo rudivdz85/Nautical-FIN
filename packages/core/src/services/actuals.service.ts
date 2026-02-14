@@ -5,6 +5,7 @@ import { balanceConfirmationsRepository } from '../repositories/balance-confirma
 import { surplusAllocationsRepository } from '../repositories/surplus-allocations.repository'
 import { accountsRepository } from '../repositories/accounts.repository'
 import { categoriesRepository } from '../repositories/categories.repository'
+import { budgetItemsRepository } from '../repositories/budget-items.repository'
 import {
   createActualSchema,
   updateActualSchema,
@@ -90,13 +91,28 @@ export const actualsService = {
       })
     }
 
-    return actualsRepository.create(db, {
+    const actual = await actualsRepository.create(db, {
       userId,
       budgetId: data.budgetId,
       year: data.year,
       month: data.month,
       notes: data.notes,
     })
+
+    if (data.budgetId) {
+      const budgetItems = await budgetItemsRepository.findByBudgetId(db, data.budgetId)
+      for (const item of budgetItems) {
+        if (item.categoryId) {
+          await actualCategoriesRepository.create(db, {
+            actualId: actual.id,
+            categoryId: item.categoryId,
+            budgetedAmount: item.plannedAmount,
+          })
+        }
+      }
+    }
+
+    return actual
   },
 
   async update(

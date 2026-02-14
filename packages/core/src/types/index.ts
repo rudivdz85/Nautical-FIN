@@ -57,6 +57,7 @@ export type {
   ImportStatus,
   ParsedTransaction,
   ImportResult,
+  BalanceCheck,
 } from './statement-imports'
 
 export type {

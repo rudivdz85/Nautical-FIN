@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { transactionsService } from '../../../packages/core/src/services/transactions.service'
 import { transactionsRepository } from '../../../packages/core/src/repositories/transactions.repository'
 import { accountsRepository } from '../../../packages/core/src/repositories/accounts.repository'
+import { categoriesRepository } from '../../../packages/core/src/repositories/categories.repository'
 import { NotFoundError, ValidationError } from '../../../packages/core/src/errors/index'
 import type { Transaction } from '../../../packages/core/src/types/transactions'
 import type { Account } from '../../../packages/core/src/types/accounts'
+import type { Category } from '../../../packages/core/src/types/categories'
 
 vi.mock('../../../packages/core/src/repositories/transactions.repository', () => ({
   transactionsRepository: {
@@ -15,6 +17,7 @@ vi.mock('../../../packages/core/src/repositories/transactions.repository', () =>
     update: vi.fn(),
     delete: vi.fn(),
     deleteByTransferPairId: vi.fn(),
+    bulkUpdateCategory: vi.fn(),
   },
 }))
 
@@ -25,10 +28,15 @@ vi.mock('../../../packages/core/src/repositories/accounts.repository', () => ({
   },
 }))
 
+vi.mock('../../../packages/core/src/repositories/categories.repository', () => ({
+  categoriesRepository: { findByIdAndUserId: vi.fn() },
+}))
+
 const mockDb = {} as Parameters<typeof transactionsService.list>[0]
 const TEST_USER_ID = '11111111-1111-1111-1111-111111111111'
 const TEST_ACCOUNT_ID = '22222222-2222-2222-2222-222222222222'
 const TEST_ACCOUNT_ID_2 = '33333333-3333-3333-3333-333333333333'
+const TEST_CATEGORY_ID = '66666666-6666-6666-6666-666666666666'
 
 function makeTransaction(overrides: Partial<Transaction> = {}): Transaction {
   return {
@@ -504,6 +512,72 @@ describe('transactionsService', () => {
       await expect(
         transactionsService.delete(mockDb, 'nonexistent', TEST_USER_ID),
       ).rejects.toThrow(NotFoundError)
+    })
+  })
+
+  describe('bulkCategorize', () => {
+    const makeCategory = (overrides: Partial<Category> = {}): Category => ({
+      id: TEST_CATEGORY_ID,
+      userId: TEST_USER_ID,
+      name: 'Groceries',
+      type: 'expense',
+      icon: null,
+      color: null,
+      isDefault: false,
+      isActive: true,
+      displayOrder: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    })
+
+    it('updates category for multiple transactions', async () => {
+      vi.mocked(categoriesRepository.findByIdAndUserId).mockResolvedValue(makeCategory())
+      vi.mocked(transactionsRepository.bulkUpdateCategory).mockResolvedValue(3)
+
+      const txnIds = [
+        'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+        'cccccccc-cccc-cccc-cccc-cccccccccccc',
+      ]
+      const result = await transactionsService.bulkCategorize(mockDb, TEST_USER_ID, {
+        transactionIds: txnIds,
+        categoryId: TEST_CATEGORY_ID,
+      })
+
+      expect(result.updated).toBe(3)
+      expect(transactionsRepository.bulkUpdateCategory).toHaveBeenCalledWith(
+        mockDb, txnIds, TEST_USER_ID, TEST_CATEGORY_ID,
+      )
+    })
+
+    it('throws NotFoundError when category does not exist', async () => {
+      vi.mocked(categoriesRepository.findByIdAndUserId).mockResolvedValue(undefined)
+
+      await expect(
+        transactionsService.bulkCategorize(mockDb, TEST_USER_ID, {
+          transactionIds: ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'],
+          categoryId: '99999999-9999-9999-9999-999999999999',
+        }),
+      ).rejects.toThrow(NotFoundError)
+    })
+
+    it('throws ValidationError for empty transaction IDs', async () => {
+      await expect(
+        transactionsService.bulkCategorize(mockDb, TEST_USER_ID, {
+          transactionIds: [],
+          categoryId: TEST_CATEGORY_ID,
+        }),
+      ).rejects.toThrow(ValidationError)
+    })
+
+    it('throws ValidationError for invalid category ID format', async () => {
+      await expect(
+        transactionsService.bulkCategorize(mockDb, TEST_USER_ID, {
+          transactionIds: ['aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'],
+          categoryId: 'not-a-uuid',
+        }),
+      ).rejects.toThrow(ValidationError)
     })
   })
 })

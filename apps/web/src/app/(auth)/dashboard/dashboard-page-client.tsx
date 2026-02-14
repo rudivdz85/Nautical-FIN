@@ -2,8 +2,8 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { Budget, Transaction, SavingsGoal, Task } from '@fin/core'
-import { useState } from 'react'
+import type { Budget, Transaction, SavingsGoal, Task, AiInsight } from '@fin/core'
+import { useState, useEffect, useRef } from 'react'
 import {
   Wallet,
   TrendingUp,
@@ -14,6 +14,10 @@ import {
   XCircle,
   AlertCircle,
   Camera,
+  Sparkles,
+  Lightbulb,
+  Eye,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -38,6 +42,7 @@ interface DashboardPageClientProps {
   recentTransactions: Transaction[]
   savingsGoals: SavingsGoal[]
   pendingTasks: Task[]
+  unreadInsights: AiInsight[]
 }
 
 export function DashboardPageClient({
@@ -49,9 +54,26 @@ export function DashboardPageClient({
   recentTransactions,
   savingsGoals,
   pendingTasks,
+  unreadInsights = [],
 }: DashboardPageClientProps) {
   const router = useRouter()
   const [snapshotting, setSnapshotting] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const autoGenRan = useRef(false)
+
+  useEffect(() => {
+    if (autoGenRan.current) return
+    autoGenRan.current = true
+    apiClient.post('/api/recurring-transactions/auto-generate', {}).then((result) => {
+      const generated = result as unknown[]
+      if (generated.length > 0) {
+        toast.success(`${generated.length} recurring transaction${generated.length > 1 ? 's' : ''} generated`)
+        router.refresh()
+      }
+    }).catch(() => {
+      // silent — auto-generation is best-effort
+    })
+  }, [router])
 
   async function handleTakeSnapshot() {
     setSnapshotting(true)
@@ -67,6 +89,36 @@ export function DashboardPageClient({
       }
     } finally {
       setSnapshotting(false)
+    }
+  }
+
+  async function handleGenerateInsights() {
+    setAnalyzing(true)
+    try {
+      await apiClient.post('/api/ai-insights/generate', {})
+      toast.success('Financial analysis complete')
+      router.refresh()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message)
+      } else {
+        toast.error('Failed to generate insights')
+      }
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  async function handleInsightAction(insightId: string, action: 'read' | 'dismiss') {
+    try {
+      await apiClient.post(`/api/ai-insights/${insightId}/${action}`, {})
+      router.refresh()
+    } catch (error) {
+      if (error instanceof ApiError) {
+        toast.error(error.message)
+      } else {
+        toast.error('Failed to update insight')
+      }
     }
   }
 
@@ -93,15 +145,26 @@ export function DashboardPageClient({
             Your financial overview at a glance.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleTakeSnapshot}
-          disabled={snapshotting}
-        >
-          <Camera className="mr-2 size-4" />
-          {snapshotting ? 'Saving...' : 'Take Snapshot'}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGenerateInsights}
+            disabled={analyzing}
+          >
+            <Sparkles className="mr-2 size-4" />
+            {analyzing ? 'Analyzing...' : 'Analyze'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleTakeSnapshot}
+            disabled={snapshotting}
+          >
+            <Camera className="mr-2 size-4" />
+            {snapshotting ? 'Saving...' : 'Snapshot'}
+          </Button>
+        </div>
       </div>
 
       {/* Row 1: Key Metrics */}
@@ -130,6 +193,59 @@ export function DashboardPageClient({
           valueClass={totalDebt > 0 ? 'text-destructive' : ''}
         />
       </div>
+
+      {/* AI Insights */}
+      {unreadInsights.length > 0 && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Lightbulb className="size-4 text-amber-500" />
+              AI Insights
+              <Badge variant="secondary">{unreadInsights.length}</Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {unreadInsights.slice(0, 5).map((insight) => (
+                <div
+                  key={insight.id}
+                  className="flex items-start justify-between gap-3"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <InsightTypeIcon type={insight.insightType} />
+                      <p className="text-sm font-medium">{insight.title}</p>
+                    </div>
+                    <p className="mt-0.5 pl-6 text-xs text-muted-foreground line-clamp-2">
+                      {insight.content}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => handleInsightAction(insight.id, 'read')}
+                      title="Mark as read"
+                    >
+                      <Eye className="size-4 text-muted-foreground" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-7"
+                      onClick={() => handleInsightAction(insight.id, 'dismiss')}
+                      title="Dismiss"
+                    >
+                      <X className="size-4 text-muted-foreground" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Row 2: Budget & Recent Transactions */}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -358,4 +474,19 @@ function PriorityIcon({ priority }: { priority: string | null }) {
     return <AlertCircle className="size-4 shrink-0 text-muted-foreground/50" />
   }
   return <AlertCircle className="size-4 shrink-0 text-amber-500" />
+}
+
+function InsightTypeIcon({ type }: { type: string }) {
+  switch (type) {
+    case 'spending_alert':
+      return <AlertCircle className="size-4 shrink-0 text-destructive" />
+    case 'budget_warning':
+      return <AlertCircle className="size-4 shrink-0 text-amber-500" />
+    case 'savings_milestone':
+      return <PiggyBank className="size-4 shrink-0 text-emerald-600" />
+    case 'debt_progress':
+      return <CreditCard className="size-4 shrink-0 text-blue-500" />
+    default:
+      return <Lightbulb className="size-4 shrink-0 text-amber-500" />
+  }
 }

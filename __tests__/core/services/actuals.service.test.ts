@@ -6,10 +6,12 @@ import { balanceConfirmationsRepository } from '../../../packages/core/src/repos
 import { surplusAllocationsRepository } from '../../../packages/core/src/repositories/surplus-allocations.repository'
 import { accountsRepository } from '../../../packages/core/src/repositories/accounts.repository'
 import { categoriesRepository } from '../../../packages/core/src/repositories/categories.repository'
+import { budgetItemsRepository } from '../../../packages/core/src/repositories/budget-items.repository'
 import { NotFoundError, ValidationError } from '../../../packages/core/src/errors/index'
 import type { Actual, ActualCategory, BalanceConfirmation, SurplusAllocation } from '../../../packages/core/src/types/actuals'
 import type { Account } from '../../../packages/core/src/types/accounts'
 import type { Category } from '../../../packages/core/src/types/categories'
+import type { BudgetItem } from '../../../packages/core/src/types/budgets'
 
 vi.mock('../../../packages/core/src/repositories/actuals.repository', () => ({
   actualsRepository: {
@@ -62,6 +64,10 @@ vi.mock('../../../packages/core/src/repositories/categories.repository', () => (
   categoriesRepository: { findByIdAndUserId: vi.fn() },
 }))
 
+vi.mock('../../../packages/core/src/repositories/budget-items.repository', () => ({
+  budgetItemsRepository: { findByBudgetId: vi.fn() },
+}))
+
 const mockDb = {} as Parameters<typeof actualsService.list>[0]
 const TEST_USER_ID = '11111111-1111-1111-1111-111111111111'
 const TEST_ACTUAL_ID = '22222222-2222-2222-2222-222222222222'
@@ -70,6 +76,7 @@ const TEST_CATEGORY_ID = '44444444-4444-4444-4444-444444444444'
 const TEST_CONFIRMATION_ID = '55555555-5555-5555-5555-555555555555'
 const TEST_ALLOCATION_ID = '66666666-6666-6666-6666-666666666666'
 const TEST_ACTUAL_CATEGORY_ID = '77777777-7777-7777-7777-777777777777'
+const TEST_BUDGET_ID = '88888888-8888-8888-8888-888888888888'
 
 function makeActual(overrides: Partial<Actual> = {}): Actual {
   return {
@@ -274,6 +281,70 @@ describe('actualsService', () => {
       await expect(
         actualsService.create(mockDb, TEST_USER_ID, { year: 2025, month: 13 }),
       ).rejects.toThrow(ValidationError)
+    })
+
+    it('auto-populates actual categories from budget items when budgetId is provided', async () => {
+      const actual = makeActual({ budgetId: TEST_BUDGET_ID })
+      vi.mocked(actualsRepository.findByUserAndMonth).mockResolvedValue(undefined)
+      vi.mocked(actualsRepository.create).mockResolvedValue(actual)
+
+      const budgetItems: BudgetItem[] = [
+        {
+          id: 'bi-1',
+          budgetId: TEST_BUDGET_ID,
+          categoryId: TEST_CATEGORY_ID,
+          plannedAmount: '3000.00',
+          rolloverAmount: '0',
+          surplusAction: 'rollover',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        {
+          id: 'bi-2',
+          budgetId: TEST_BUDGET_ID,
+          categoryId: 'cat-2',
+          plannedAmount: '1500.00',
+          rolloverAmount: '0',
+          surplusAction: 'rollover',
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      ]
+      vi.mocked(budgetItemsRepository.findByBudgetId).mockResolvedValue(budgetItems)
+      vi.mocked(actualCategoriesRepository.create).mockResolvedValue(makeActualCategory())
+
+      await actualsService.create(mockDb, TEST_USER_ID, {
+        year: 2025,
+        month: 2,
+        budgetId: TEST_BUDGET_ID,
+      })
+
+      expect(budgetItemsRepository.findByBudgetId).toHaveBeenCalledWith(mockDb, TEST_BUDGET_ID)
+      expect(actualCategoriesRepository.create).toHaveBeenCalledTimes(2)
+      expect(actualCategoriesRepository.create).toHaveBeenCalledWith(mockDb, {
+        actualId: TEST_ACTUAL_ID,
+        categoryId: TEST_CATEGORY_ID,
+        budgetedAmount: '3000.00',
+      })
+      expect(actualCategoriesRepository.create).toHaveBeenCalledWith(mockDb, {
+        actualId: TEST_ACTUAL_ID,
+        categoryId: 'cat-2',
+        budgetedAmount: '1500.00',
+      })
+    })
+
+    it('does not fetch budget items when no budgetId', async () => {
+      const actual = makeActual()
+      vi.mocked(actualsRepository.findByUserAndMonth).mockResolvedValue(undefined)
+      vi.mocked(actualsRepository.create).mockResolvedValue(actual)
+
+      await actualsService.create(mockDb, TEST_USER_ID, {
+        year: 2025,
+        month: 2,
+      })
+
+      expect(budgetItemsRepository.findByBudgetId).not.toHaveBeenCalled()
+      expect(actualCategoriesRepository.create).not.toHaveBeenCalled()
     })
   })
 

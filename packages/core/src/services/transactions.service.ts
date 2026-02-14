@@ -6,7 +6,9 @@ import {
   createTransactionSchema,
   createTransferSchema,
   updateTransactionSchema,
+  bulkCategorizeSchema,
 } from '../validation/transactions'
+import { categoriesRepository } from '../repositories/categories.repository'
 import type { Transaction, TransactionFilters } from '../types/transactions'
 import { NotFoundError, ValidationError } from '../errors/index'
 
@@ -194,6 +196,30 @@ export const transactionsService = {
     if (!deleted) {
       throw new NotFoundError('Transaction', id)
     }
+  },
+
+  async bulkCategorize(
+    db: Database,
+    userId: string,
+    input: unknown,
+  ): Promise<{ updated: number }> {
+    const parsed = bulkCategorizeSchema.safeParse(input)
+    if (!parsed.success) {
+      throw buildValidationError('Invalid bulk categorize data', parsed.error.issues)
+    }
+
+    const category = await categoriesRepository.findByIdAndUserId(
+      db, parsed.data.categoryId, userId,
+    )
+    if (!category) {
+      throw new NotFoundError('Category', parsed.data.categoryId)
+    }
+
+    const updated = await transactionsRepository.bulkUpdateCategory(
+      db, parsed.data.transactionIds, userId, parsed.data.categoryId,
+    )
+
+    return { updated }
   },
 }
 

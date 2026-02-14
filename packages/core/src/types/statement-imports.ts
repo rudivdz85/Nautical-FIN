@@ -15,9 +15,18 @@ export interface ParsedTransaction {
   postedDate?: string
 }
 
+export interface BalanceCheck {
+  openingBalance: string | null
+  closingBalance: string | null
+  computedClosing: string
+  difference: string
+  isReconciled: boolean
+}
+
 export interface ImportResult {
   import: StatementImport
   imported: number
   duplicates: number
   failed: number
+  balanceCheck?: BalanceCheck
 }
