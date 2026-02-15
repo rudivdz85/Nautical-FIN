@@ -28,7 +28,12 @@
       "Bash(pnpm list:*)",
       "Bash(pnpm vitest run:*)",
       "Bash(pnpm db:generate:*)",
-      "Bash(pnpm --filter @fin/web add:*)"
+      "Bash(pnpm --filter @fin/web add:*)",
+      "WebFetch(domain:clerk.com)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "Bash(pnpm test:e2e:*)",
+      "Bash(lsof:*)"
     ]
   }
 }
